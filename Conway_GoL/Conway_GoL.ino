@@ -1,38 +1,36 @@
-// Conway's Game of Life //
+// Conway's game of life cellular automata //
 
-#include "hardware/xosc.h"
 #include "hardware/structs/rosc.h"
 #include "st7789_lcd.pio.h"
 
-#define PIN_DIN 11
-#define PIN_CLK 10
-#define PIN_CS 9
-#define PIN_DC 8
+#define PIN_DIN   11
+#define PIN_CLK   10
+#define PIN_CS    9
+#define PIN_DC    8
 #define PIN_RESET 12
-#define PIN_BL 13
-#define KEY_A 15
+#define PIN_BL    13
+#define KEY_A     15
 
 PIO pio = pio0;
 uint sm = 0;
 uint offset = pio_add_program(pio, &st7789_lcd_program);
 
-#define BLACK           0x0000
-#define BLUE            0x001F
-#define RED             0xF800
-#define GREEN           0x07E0
-#define CYAN            0x07FF
-#define MAGENTA         0xF81F
-#define YELLOW          0xFFE0
-#define WHITE           0xFFFF
+#define BLACK   0x0000
+#define BLUE    0x001F
+#define RED     0xF800
+#define GREEN   0x07E0
+#define CYAN    0x07FF
+#define MAGENTA 0xF81F
+#define YELLOW  0xFFE0
+#define WHITE   0xFFFF
 
-#define WIDTH  240
-#define HEIGHT 135
-#define SCR (WIDTH * HEIGHT)
+#define WIDTH   240
+#define HEIGHT  135
+#define SCR     (WIDTH*HEIGHT)
 
   uint16_t coll;
   bool grid[2][WIDTH][HEIGHT];
   int current;
-
 
 #define SERIAL_CLK_DIV 1.f
 
@@ -91,19 +89,32 @@ static inline void st7789_start_pixels(PIO pio, uint sm) {
   lcd_set_dc_cs(1, 0);
 
 }
+
+static inline void seed_random_from_rosc(){
+  
+  uint32_t random = 0;
+  uint32_t random_bit;
+  volatile uint32_t *rnd_reg = (uint32_t *)(ROSC_BASE + ROSC_RANDOMBIT_OFFSET);
+
+  for (int k = 0; k < 32; k++) {
+    while (1) {
+      random_bit = (*rnd_reg) & 1;
+      if (random_bit != ((*rnd_reg) & 1)) break;
+    }
+
+    random = (random << 1) | random_bit;
+  }
+
+  srand(random);
+}
   
 void rndseed(){
 
-  st7789_start_pixels(pio, sm);
-
-  for(int x = 0; x < 2*SCR; x++) st7789_lcd_put(pio, sm, 0);
-
   for (int x = 0; x < WIDTH; x++) {
-    for (int y = 0; y < HEIGHT; y++) grid[0][x][y] = rosc_hw->randombit;
+    for (int y = 0; y < HEIGHT; y++) grid[0][x][y] = rand()%2;
   }
 
 }
-
 
 void RunGrid(){
   
@@ -179,8 +190,8 @@ void setup(){
   gpio_put(PIN_BL, 1);
   gpio_pull_up(KEY_A);
 
-  xosc_init();
-
+  seed_random_from_rosc();
+  
   rndseed();
   
 }

@@ -1,33 +1,34 @@
 // Turmites cellular automata //
 
-#include "hardware/xosc.h"
 #include "hardware/structs/rosc.h"
 #include "st7789_lcd.pio.h"
 
-#define PIN_DIN 11
-#define PIN_CLK 10
-#define PIN_CS 9
-#define PIN_DC 8
+#define PIN_DIN   11
+#define PIN_CLK   10
+#define PIN_CS    9
+#define PIN_DC    8
 #define PIN_RESET 12
-#define PIN_BL 13
-#define KEY_A 15
+#define PIN_BL    13
+#define KEY_A     15
 
 PIO pio = pio0;
 uint sm = 0;
 uint offset = pio_add_program(pio, &st7789_lcd_program);
 
-#define BLACK           0x0000
-#define BLUE            0x001F
-#define RED             0xF800
-#define GREEN           0x07E0
-#define CYAN            0x07FF
-#define MAGENTA         0xF81F
-#define YELLOW          0xFFE0
-#define WHITE           0xFFFF
+#define BLACK   0x0000
+#define BLUE    0x001F
+#define RED     0xF800
+#define GREEN   0x07E0
+#define CYAN    0x07FF
+#define MAGENTA 0xF81F
+#define YELLOW  0xFFE0
+#define WHITE   0xFFFF
 
-#define WIDTH  240
-#define HEIGHT 135
-#define SCR (WIDTH * HEIGHT)
+#define WIDTH   240
+#define HEIGHT  135
+#define SCR     (WIDTH*HEIGHT)
+
+#define ITER    125
 
   uint16_t col[SCR];
   int posx,posy;
@@ -40,8 +41,6 @@ uint offset = pio_add_program(pio, &st7789_lcd_program);
   int next_col[4][4];
   int next_state[4][4];
   int directions[4][4];
-
-  uint32_t seed;
 
 #define SERIAL_CLK_DIV 1.f
 
@@ -101,13 +100,27 @@ static inline void st7789_start_pixels(PIO pio, uint sm) {
 
 }
 
-void rndseed(){
+static inline void seed_random_from_rosc(){
+  
+  uint32_t random = 0;
+  uint32_t random_bit;
+  volatile uint32_t *rnd_reg = (uint32_t *)(ROSC_BASE + ROSC_RANDOMBIT_OFFSET);
 
-  memset(col,0,2*SCR);  
+  for (int k = 0; k < 32; k++) {
+    while (1) {
+      random_bit = (*rnd_reg) & 1;
+      if (random_bit != ((*rnd_reg) & 1)) break;
+    }
 
-  st7789_start_pixels(pio, sm);
+    random = (random << 1) | random_bit;
+  }
 
-  for(int x = 0; x < 2*SCR; x++) st7789_lcd_put(pio, sm, 0);
+  srand(random);
+}
+
+void rndrule(){
+
+  memset(col,0,2*SCR);
 
   state = rand()%4;
   dir = 0;
@@ -179,24 +192,20 @@ void setup() {
   gpio_put(PIN_BL, 1);
   gpio_pull_up(KEY_A);
 
-  xosc_init();
+  seed_random_from_rosc();
 
-  for(int x = 0; x < 65535; x++) seed = seed + rosc_hw->randombit;
-
-  srand(seed);
-
-  rndseed();
+  rndrule();
   
 }
 
 
 void loop() {
 
-  if (gpio_get(KEY_A) == false) rndseed();
+  if (gpio_get(KEY_A) == false) rndrule();
   
   st7789_start_pixels(pio, sm);
 
-  for (int i = 0; i < 125; i++) {
+  for (int i = 0; i < ITER; i++) {
 
     move_turmite();
 

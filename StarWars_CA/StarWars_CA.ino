@@ -1,48 +1,45 @@
 // StarWars cellular automata //
 
-#include "hardware/xosc.h"
 #include "hardware/structs/rosc.h"
 #include "st7789_lcd.pio.h"
 
-#define PIN_DIN 11
-#define PIN_CLK 10
-#define PIN_CS 9
-#define PIN_DC 8
+#define PIN_DIN   11
+#define PIN_CLK   10
+#define PIN_CS    9
+#define PIN_DC    8
 #define PIN_RESET 12
-#define PIN_BL 13
-#define KEY_A 15
+#define PIN_BL    13
+#define KEY_A     15
 
 PIO pio = pio0;
 uint sm = 0;
 uint offset = pio_add_program(pio, &st7789_lcd_program);
 
-#define BLACK           0x0000
-#define BLUE            0x001F
-#define RED             0xF800
-#define GREEN           0x07E0
-#define CYAN            0x07FF
-#define MAGENTA         0xF81F
-#define YELLOW          0xFFE0
-#define WHITE           0xFFFF
+#define BLACK   0x0000
+#define BLUE    0x001F
+#define RED     0xF800
+#define GREEN   0x07E0
+#define CYAN    0x07FF
+#define MAGENTA 0xF81F
+#define YELLOW  0xFFE0
+#define WHITE   0xFFFF
 
-#define WIDTH  120
-#define HEIGHT 68
-#define FULLW  240
-#define FULLH  135
-#define SCR (FULLW * FULLH)
+#define WIDTH   120
+#define HEIGHT  68
+#define FULLW   240
+#define FULLH   135
+#define SCR     (FULLW*FULLH)
+
+#define ALIVE   3
+#define DEATH_1 2
+#define DEATH_2 1
+#define DEAD    0
 
   uint16_t col[SCR];
   uint8_t current [WIDTH][HEIGHT];
   uint8_t next [WIDTH][HEIGHT];
   uint8_t alive_counts [WIDTH][HEIGHT];
   uint8_t tmp[WIDTH][HEIGHT];
-  int nx, ny;
-  
-  int ALIVE = 3;
-  int DEATH_1 = 2;
-  int DEATH_2 = 1;
-  int DEAD = 0;
-
 
 #define SERIAL_CLK_DIV 1.f
 
@@ -101,12 +98,30 @@ static inline void st7789_start_pixels(PIO pio, uint sm) {
   lcd_set_dc_cs(1, 0);
 
 }
+
+static inline void seed_random_from_rosc(){
   
-void rndseed(){
+  uint32_t random = 0;
+  uint32_t random_bit;
+  volatile uint32_t *rnd_reg = (uint32_t *)(ROSC_BASE + ROSC_RANDOMBIT_OFFSET);
+
+  for (int k = 0; k < 32; k++) {
+    while (1) {
+      random_bit = (*rnd_reg) & 1;
+      if (random_bit != ((*rnd_reg) & 1)) break;
+    }
+
+    random = (random << 1) | random_bit;
+  }
+
+  srand(random);
+}
+  
+void rndrule(){
 
   memset(col,0,2 * SCR);
   
-  for (int y = 0; y < HEIGHT; y++) { for (int x = 0; x < WIDTH; x++) current[x][y] = (random()%100) < 20 ? ALIVE : DEAD; }
+  for (int y = 0; y < HEIGHT; y++) { for (int x = 0; x < WIDTH; x++) current[x][y] = (rand()%100) < 20 ? ALIVE : DEAD; }
 
 }
 
@@ -124,9 +139,9 @@ void step(){
     
       int self = current[x][y];
     
-      for (nx = x-1; nx <= x+1; nx++) {
+      for (int nx = x-1; nx <= x+1; nx++) {
   
-        for (ny = y-1; ny <= y+1; ny++) {
+        for (int ny = y-1; ny <= y+1; ny++) {
     
           if (nx == x && ny == y) continue;     
           if (current[wrap(nx, mx)][wrap(ny, my)] == ALIVE) count++;
@@ -214,16 +229,16 @@ void setup(){
   gpio_put(PIN_BL, 1);
   gpio_pull_up(KEY_A);
 
-  xosc_init();
+  seed_random_from_rosc();
 
-  rndseed();
+  rndrule();
   
 }
 
 
 void loop(){
 
-  if (gpio_get(KEY_A) == false) rndseed();
+  if (gpio_get(KEY_A) == false) rndrule();
 
   step();
 
