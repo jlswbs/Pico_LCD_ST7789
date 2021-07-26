@@ -24,11 +24,13 @@ uint offset = pio_add_program(pio, &st7789_lcd_program);
 #define YELLOW  0xFFE0
 #define WHITE   0xFFFF
 
-#define WIDTH   240
-#define HEIGHT  135
-#define SCR     (WIDTH*HEIGHT)
+#define WIDTH   120
+#define HEIGHT  68
+#define FULLW   240
+#define FULLH   135
+#define SCR     (FULLW*FULLH)
 
-  uint16_t coll;
+  uint16_t col[SCR];
   bool grid[2][WIDTH][HEIGHT];
   int current;
 
@@ -110,6 +112,8 @@ static inline void seed_random_from_rosc(){
   
 void rndseed(){
 
+  memset(col,0,2 * SCR);
+
   for (int x = 0; x < WIDTH; x++) {
     for (int y = 0; y < HEIGHT; y++) grid[0][x][y] = rand()%2;
   }
@@ -136,6 +140,9 @@ void RunGrid(){
       else { value = grid[current][x][y]; }
     
       grid[new_grid][x][y] = value;
+
+      if(grid[current][x][y]) col[(2*x)+(2*y)*FULLW] = WHITE;
+      else col[(2*x)+(2*y)*FULLW] = BLACK;
     
     }
   }
@@ -205,12 +212,11 @@ void loop(){
 
   RunGrid();
 
-  for (int y = 0; y < HEIGHT; y++) {
+  for (int y = 0; y < FULLH; y++) {
 
-    for (int x = 0; x < WIDTH; x++) {
+    for (int x = 0; x < FULLW; x++) {
 
-      if(grid[current][x][y]) coll = WHITE;
-      else coll = BLACK;
+      uint16_t coll = col[x+y*FULLW];
       st7789_lcd_put(pio, sm, coll >> 8);
       st7789_lcd_put(pio, sm, coll & 0xff);
 
