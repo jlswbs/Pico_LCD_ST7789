@@ -1,4 +1,4 @@
-// 1D Diffusion-Reaction //
+// Belousov-Zhabotinsky reaction //
 
 #include "hardware/structs/rosc.h"
 #include "st7789_lcd.pio.h"
@@ -10,7 +10,6 @@
 #define PIN_RESET 12
 #define PIN_BL    13
 #define KEY_A     15
-#define KEY_B     17
 
 PIO pio = pio0;
 uint sm = 0;
@@ -25,17 +24,20 @@ uint offset = pio_add_program(pio, &st7789_lcd_program);
 #define YELLOW  0xFFE0
 #define WHITE   0xFFFF
 
-#define WIDTH   240
-#define HEIGHT  135
-#define SCR     (WIDTH*HEIGHT)
+#define WIDTH   80
+#define HEIGHT  45
+#define FULLW   240
+#define FULLH   135
+#define SCR     (FULLW*FULLH)
 
-  float A[WIDTH]; 
-  float I[WIDTH];
-  float D2A[WIDTH]; 
-  float D2I[WIDTH];
-  float p[6];
-  float dt = 0.05f;
-  int i, j;
+  float adjust = 1.2f;
+  uint16_t col[SCR];
+  float a [WIDTH][HEIGHT][2];
+  float b [WIDTH][HEIGHT][2];
+  float c [WIDTH][HEIGHT][2];
+
+  int p = 0, q = 1;
+  int x,y,i,j;
 
 float randomf(float minf, float maxf) {return minf + (rand()%(1UL << 31))*(maxf - minf) / (1UL << 31);} 
 
@@ -122,48 +124,24 @@ static inline void seed_random_from_rosc(){
   srand(random);
 }
 
-void rndrule(){
-
-  i = 0;
-  j = 0;
-
-  st7789_start_pixels(pio, sm);
-  for(int x = 0; x < 2*SCR; x++) st7789_lcd_put(pio, sm, 0);
-
-  p[0] = randomf(0.0f,1.0f);
-  p[1] = randomf(0.0f,15.0f);
-  p[2] = randomf(0.0f,4.0f);
-  p[3] = randomf(0.0f,15.0f);
-  p[4] = randomf(0.0f,4.0f);
-  p[5] = randomf(0.0f,2.0f);
-
-  for(int k=0;k<WIDTH; k++) {
-    
-    A[k] = randomf(0.0f, 1.0f);
-    I[k] = randomf(0.0f, 1.0f);
-    
-  }
-
-}
-
 void rndseed(){
 
-  i = 0;
-  j = 0;
+  memset(col,0,2 * SCR);
+  
+  adjust = randomf(0.75f, 1.35f);
 
-  st7789_start_pixels(pio, sm);
-  for(int x = 0; x < 2*SCR; x++) st7789_lcd_put(pio, sm, 0);
+  for (y = 0; y < HEIGHT; y++) {
 
-  for(int k=0;k<WIDTH; k++) {
-    
-    A[k] = randomf(0.0f, 1.0f);
-    I[k] = randomf(0.0f, 1.0f);
-    
+    for (x = 0; x < WIDTH; x++) {
+
+      a[x][y][0] = randomf(0.0f, 1.0f);
+      b[x][y][0] = randomf(0.0f, 1.0f);
+      c[x][y][0] = randomf(0.0f, 1.0f);
+    }
   }
+} 
 
-}
-
-void setup() {
+void setup(){
 
   st7789_lcd_program_init(pio, sm, offset, PIN_DIN, PIN_CLK, SERIAL_CLK_DIV);
 
@@ -177,51 +155,69 @@ void setup() {
   gpio_set_dir(PIN_RESET, GPIO_OUT);
   gpio_set_dir(PIN_BL, GPIO_OUT);
   gpio_set_dir(KEY_A, GPIO_IN);
-  gpio_set_dir(KEY_B, GPIO_IN);
 
   gpio_put(PIN_CS, 1);
   gpio_put(PIN_RESET, 1);
   lcd_init(pio, sm, st7789_init_seq);
   gpio_put(PIN_BL, 1);
   gpio_pull_up(KEY_A);
-  gpio_pull_up(KEY_B);
 
   seed_random_from_rosc();
-
-  rndrule();
+  
+  rndseed();
   
 }
 
 
-void loop() {
+void loop(){
+
+  if (gpio_get(KEY_A) == false) rndseed();
   
   st7789_start_pixels(pio, sm);
 
-  for(j=0;j<HEIGHT; j++) {
+  for (y = 0; y < HEIGHT; y++) {
 
-    if (gpio_get(KEY_A) == false) rndrule();
-    if (gpio_get(KEY_B) == false) rndseed();
-   
-    for(int k=1;k<WIDTH-1; k++) {
+    for (x = 0; x < WIDTH; x++) {
+
+      float c_a = 0.0f;
+      float c_b = 0.0f;
+      float c_c = 0.0f;
+
+      for (i = x - 1; i <= x+1; i++) {
+
+        for (j = y - 1; j <= y+1; j++) {
+
+          c_a += a[(i+WIDTH)%WIDTH][(j+HEIGHT)%HEIGHT][p];
+          c_b += b[(i+WIDTH)%WIDTH][(j+HEIGHT)%HEIGHT][p];
+          c_c += c[(i+WIDTH)%WIDTH][(j+HEIGHT)%HEIGHT][p];
+
+        }
+      }
+
+      c_a /= 9.0f;
+      c_b /= 9.0f;
+      c_c /= 9.0f;
+
+      a[x][y][q] = constrain(c_a + c_a * (adjust * c_b - c_c), 0.0f, 1.0f);
+      b[x][y][q] = constrain(c_b + c_b * (c_c - adjust * c_a), 0.0f, 1.0f);
+      c[x][y][q] = constrain(c_c + c_c * (c_a - c_b), 0.0f, 1.0f);
       
-      D2A[k] = A[k-1] + A[k+1] - 2.0f * A[k];
-      D2I[k] = I[k-1] + I[k+1] - 2.0f * I[k];
- 
+      uint16_t coll = 128.0f * a[x][y][q];
+      col[(3*x)+(3*y)*FULLW] = rgb565(coll, coll, coll);        
+
     }
+  }
   
-    D2A[0] = A[1] - A[0]; 
-    D2I[0] = I[1] - I[0]; 
+  if (p == 0) { p = 1; q = 0; } else { p = 0; q = 1; }
 
-    for(i=0;i<WIDTH; i++) {
-    
-      A[i] = A[i] + dt * (5.0f * A[i] * A[i] * A[i] / (I[i] * I[i]) + p[0] - p[1] * A[i] + p[2] * D2A[i]);
-      I[i] = I[i] + dt * (A[i] * A[i] * A[i] - p[3] * I[i] + p[4] * D2I[i] + p[5] * randomf(-1.0f, 1.0f));
-      
-      uint8_t col = 250 - (50*A[i]);
-      uint16_t coll = rgb565(col, col, col);
+  for (int y = 0; y < FULLH; y++) {
+
+    for (int x = 0; x < FULLW; x++) {
+
+      uint16_t coll = col[x+y*FULLW];
       st7789_lcd_put(pio, sm, coll >> 8);
       st7789_lcd_put(pio, sm, coll & 0xff);
- 
+
     }
 
   }
