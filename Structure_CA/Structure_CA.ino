@@ -31,7 +31,8 @@ uint offset = pio_add_program(pio, &st7789_lcd_program);
 
   uint16_t coll;
   uint8_t state[WIDTH];
-  int k;
+  uint8_t temp[WIDTH];
+  uint8_t k;
 
 #define SERIAL_CLK_DIV 1.f
 
@@ -113,8 +114,9 @@ void rndrule(){
 
   st7789_start_pixels(pio, sm);
 
-  for(int x = 0; x < 2*SCR; x++) st7789_lcd_put(pio, sm, 0);
-  for (int x=0; x<WIDTH; x++) state[x] = rand()%16;
+  for (int i = 0; i < 2*SCR; i++) st7789_lcd_put(pio, sm, 0);
+  for (int i = 0; i < WIDTH; i++) state[i] = rand()%16;
+  for (int i = 0; i < WIDTH; i++) temp[i] = 0;
   k = rand()%16;
 
 }
@@ -159,7 +161,7 @@ void loop() {
  
     for (int x = 0; x < WIDTH; x++) {
            
-      k = k ^ state[x] ^ state[k];
+      k = k ^ temp[x] ^ state[k];
       state[x] = k;
 
       if(state[x] == 0) coll = BLACK;
@@ -183,7 +185,8 @@ void loop() {
       st7789_lcd_put(pio, sm, coll & 0xff);
                                                    
     }
-                                                 
+
+    memcpy(temp, state, WIDTH);                                               
     sleep_us(50);
     
   }
